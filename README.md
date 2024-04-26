@@ -18,5 +18,11 @@
 5. Delivery
 
 ## Reproduction of Findings
+1. Clone this repository.
+2. Install the UC Irvine Python package:
+```
+pip install ucimlrepo
+```
+3. Run the notebooks
 
 ## Key Findings
