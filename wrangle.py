@@ -146,6 +146,9 @@ def clean_data(df):
     # remap using lambda and apply
     copy_df.service = copy_df.service.apply(lambda x: 'none' if x == '-' else x)
     
+    # Fix the spelling error on ARP poisoning
+    copy_df.Attack_type.apply(lambda x:'ARP_poisoning' if x=='ARP_poisioning' else x)
+    
     # Initiate a collector list
     single_val_cols = []
 
@@ -159,6 +162,10 @@ def clean_data(df):
     
     # Drop any single value columns
     copy_df = copy_df.drop(single_val_cols,axis=1,errors='ignore')
+    
+    # Add a column denoting attack or normal pattern
+    normal_pattern = ['MQTT_Publish','Thing_Speak','Wipro_bulb','Amazon-Alexa']
+    copy_df['traffic_type'] = np.where(copy_df.Attack_type.isin(normal_pattern),'Normal','Attack')
     
     return copy_df
 
