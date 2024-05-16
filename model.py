@@ -20,6 +20,11 @@ from sklearn.neural_network import MLPClassifier
 # Import matplotlib for text arrangement
 import matplotlib.pyplot as plt
 
+# Warning handling
+import warnings
+from sklearn.exceptions import ConvergenceWarning
+from sklearn.exceptions import UndefinedMetricWarning
+
 def encode_df(dframe,target):
 	'''
 	Takes a processed dataframe and encodes the object columns for usage in modeling.
@@ -87,29 +92,212 @@ def pca_transform(X,y,ranstate=42):
     
     return df
     
-def kbest(X,y):
+def model_testing(X_train,y_train,warn_suppress=True):
     """
-    Returns a dataframe containing the top 50 KBest features.
+    Runs through the 5 predetermined algorithms and runs basic testing.
     
-    Parameters:
+    Paramaters:
     -----------
-    - X: DataFrame
-        The data to be trained on
-    - y: Series
-        The target variable
+    - X_set: list
+        List containing 
+    - y_set: list
+    - warn_suppress: Boolean, default = True
+        Whether to display the warnings being given or not
     
     Returns:
     --------
-    - kbest: DataFrame
-        The transformed dataset
+    - DataFrame containing results of the grid search.
     
     """
+    # Calculate elapsed times
+    import time
+    start_time = time.time()
     
-    # Build the model
-    kbest = fselect.SelectKBest(k=50)
     
-    # fit and transform the model
-    df_kbest = pd.DataFrame(data=kbest.fit_transform(X,y),columns=kbest.get_feature_names_out())
+    # handle warnings
+    if warn_suppress:
+        print('WARNINGS SUPPRESSED.')
+        
+        # suppress divide by zero and other runtime warnings
+        warnings.filterwarnings('ignore',category=RuntimeWarning)
+        
+        # suppress convergence warnings
+        warnings.filterwarnings('ignore',category=ConvergenceWarning)
     
-    return df_kbest
+    # Build the pipeline
+    print("Assembling pipeline...")
+    pipeline = Pipeline([
+        ('scalar',RobustScaler()),
+        ('kbest',SelectKBest()),
+        ('clf',LogisticRegression())
+    ])
+    
+    # Build the search space
+    print("Assembling search parameters...")
+    search_space = [
+        {'kbest__k':[25,50,'all']},
+        {'clf':[LogisticRegression(random_state=42)],
+             'clf__C':[1.0,0.1]
+        },
+        {'clf':[DecisionTreeClassifier(random_state=42)],
+             'clf__max_depth':[3,6,9]
+        },
+        {'clf':[RandomForestClassifier(random_state=42)],
+             'clf__max_depth':[3,6,9]
+        },
+        {'clf':[SVC(random_state=42)],
+             'clf__C':[1.0,0.1]
+        },
+        {'clf':[MLPClassifier(random_state=42)],
+             'clf__hidden_layer_sizes':[(50,),(100,),(150,)]
+        }
+    ]
+    
+    # Build and fit the GridSearchCV
+    print("Building the grid search....")
+    gscv = GridSearchCV(pipeline,search_space,scoring='accuracy',cv=5,verbose=1)
 
+    print("Fitting models...")
+    gscv.fit(X_train,y_train)
+    
+    # Calculate the elapsed time
+    elapsed_time = time.time() - start_time
+    print(f'Models fit. Elapsed time: {elapsed_time} seconds.')
+    
+    return pd.DataFrame(gscv.cv_results_)
+
+def print_report(results,X_set,y_set,n_show=3,suppress_warnings=True):
+    """
+    Shows the top 3 performing algorithms and their classification reports
+    
+    Parameters:
+    -----------
+    - results: DataFrame
+        A DataFrame containing the cv_results_ of a grid search
+    - X_set: List
+        A list containing the 3 DataFrames of X_train, X_validate, and X_test. Does not use the test set.
+    - y_set: List
+        A list containing the 3 Series of y_train, y_validate, and y_test. Does not use the test set.
+    - n_show: Integer, default=3
+        How many of the top algorithms to show
+    - suppress_warnings: Boolean, default=True
+        Whether to suppress warnings or show them.
+    
+    Returns:
+    --------
+    - None
+    """
+    
+    # Suppress warnings
+    if suppress_warnings:
+        warnings.filterwarnings('ignore')
+        warnings.filterwarnings("ignore", category=UndefinedMetricWarning)
+    
+    # Sort by test score
+    sorted_results_df = results.sort_values('mean_test_score', ascending=False)
+
+    # Calculate the top 30% cutoff
+    cutoff_index = int(len(sorted_results_df) * 0.3)
+    top_30_df = sorted_results_df.head(cutoff_index)
+    
+    # Extract algorithm names assuming param_clf is directly usable or adjust accordingly
+    top_30_df['algorithm_name'] = top_30_df['param_clf'].copy().apply(lambda x: type(x).__name__)
+    top_algorithms = top_30_df['algorithm_name'].value_counts().nlargest(n_show).index.tolist()
+    print(f"Top {n_show} Algorithm(s):", top_algorithms)
+    
+    classification_reports = []
+    for algo in top_algorithms:
+        # Filter the DataFrame for this specific algorithm
+        algo_df = top_30_df[top_30_df['algorithm_name'] == algo]
+
+        # Get the best set of parameters for this algorithm
+        best_params = algo_df.iloc[0]['params']
+
+        # Set up the estimator with the best parameters
+        estimator = gscv.estimator.set_params(**best_params)
+
+        # Fit the estimator on the full dataset (or a training subset if specified)
+        estimator.fit(X_set[0], y_set[0])
+
+        # Optionally, evaluate on a test set and generate classification reports
+        y_pred = estimator.predict(X_set[1])
+        report = classification_report(y_set[1], y_pred)
+        classification_reports.append(report)
+
+    fig, axs = plt.subplots(1, 3, figsize=(15, 5))
+    for i, report in enumerate(classification_reports):
+        axs[i].text(0.01, 1, report, {'fontsize': 10}, fontfamily='monospace', verticalalignment='top', horizontalalignment='left')
+        axs[i].axis('off')
+        axs[i].set_title(f"Report for {top_salgorithms[i]}")
+
+    plt.tight_layout()
+    plt.show()
+    
+    return None
+
+def final_models(X_train,y_train,suppress_warnings=True):
+    """
+    Return results of the top performing models using a grid search and pre-defined parameters.
+    
+    Parameters:
+    -----------
+    - X_train: DataFrame
+        The dataset to be trained on
+    - y_train: Series
+        The target variable
+    - suppress_warnings: Boolean, default=True
+    
+    Returns:
+    --------
+    DataFrame containing the results of the grid search.
+    """
+    
+    start_time = time.time()
+    
+    # handle warnings
+    if suppress_warnings:
+        print('WARNINGS SUPRESSED.')
+        
+        # suppress divide by zero and other runtime warnings
+        warnings.filterwarnings('ignore',category=RuntimeWarning)
+        
+        # suppress convergence warnings
+        warnings.filterwarnings('ignore',category=ConvergenceWarning)
+    
+    print('Building search space...')
+    search_space = [
+        {
+            'clf':[MLPClassifier(random_state=42)],
+            'clf__hidden_layer_sizes':[(75,),(100,),(125,)],
+            'clf__alpha':np.logspace(-4,2,20),
+            'clf__learning_rate':['constant','invscaling','adaptive']
+        },
+        {
+            'clf':[RandomForestClassifier(random_state=42)],
+            'clf__n_estimators':[75,100,125],
+            'clf__max_depth':[3,6,9,12,15],
+            'clf__class_weight':['balanced','balanced_subsample']
+        },
+        {
+            'kbest__k':[40,50,60,'all']
+        }
+    ]
+    
+    print('Building pipeline...')
+    finalist_pipeline = Pipeline(
+        [
+            ('scalar',RobustScaler()),
+            ('kbest',fselect.SelectKBest()),
+            ('clf',MLPClassifier())
+        ]
+    )
+    
+    print('Building grid search...')
+    gscv = GridSearchCV(finalist_pipeline,search_space,cv=5,scoring='accuracy',verbose=1)
+
+    print('Fitting models...')
+    gscv.fit(X_train,y_train)
+    
+    print(f'Models fitted. Elapsed time:{time.time() - start_time}')
+    
+    return pd.DataFrame(gscv.cv_results_)
