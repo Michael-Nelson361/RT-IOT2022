@@ -84,7 +84,7 @@ def q2(df):
     plt.show()
     
     # Step 1: Calculate counts
-    grouped = train.groupby(['service', 'traffic_type']).size().reset_index(name='counts')
+    grouped = df.groupby(['service', 'traffic_type']).size().reset_index(name='counts')
 
     # Step 2: Calculate total counts for each service to use for percentage calculation
     total_counts = grouped.groupby('service')['counts'].transform('sum')
@@ -116,7 +116,7 @@ def q2(df):
     
     return None
 
-def q4(df):
+def q3(df):
     """
     <summary>
     
