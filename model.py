@@ -1,5 +1,24 @@
+# Basic imports
 import pandas as pd
 import numpy as np
+import time
+
+# SciKitLearn imports
+from sklearn.feature_selection import SelectKBest
+from sklearn.metrics import classification_report
+from sklearn.model_selection import GridSearchCV
+from sklearn.preprocessing import RobustScaler
+from sklearn.pipeline import Pipeline
+
+# SciKitLearn modeling
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.linear_model import LogisticRegression
+from sklearn.svm import SVC
+from sklearn.neural_network import MLPClassifier
+
+# Import matplotlib for text arrangement
+import matplotlib.pyplot as plt
 
 def encode_df(dframe,target):
 	'''
